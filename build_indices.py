@@ -5,6 +5,7 @@ from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 import numpy as np
 import json
+import argparse
 
 def chunker(text: str, chunk_size: int = 350, overlap: int = 50):
     words = text.split()
@@ -16,7 +17,7 @@ def chunker(text: str, chunk_size: int = 350, overlap: int = 50):
             break
     return chunks
 
-def load_docs(root_path: str = 'data/docs'):
+def load_docs(root_path: str):
     docs = []
     for path in Path(root_path).rglob('*.txt'):
         with open(path, 'r', encoding='utf-8') as file:
@@ -25,9 +26,30 @@ def load_docs(root_path: str = 'data/docs'):
     return docs
 
 def main():
-    os.makedirs('artifacts', exist_ok=True)
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-    docs = load_docs()
+    parser = argparse.ArgumentParser(
+        description='Script for building indices from data for rag',
+    )
+
+    parser.add_argument(
+        '--data_path',
+        default='data/pokerogue_pages'
+    )
+
+    parser.add_argument(
+        '--artifacts_path',
+        default='artifacts'
+    )
+
+    parser.add_argument(
+        '--embedding_model',
+        default='all-MiniLM-L6-v2'
+    )
+
+    args = parser.parse_args()
+
+    os.makedirs(args.artifacts_path, exist_ok=True)
+    model = SentenceTransformer(args.embedding_model)
+    docs = load_docs(args.data_path)
 
     all_chunks = []
     metadata = []
@@ -47,11 +69,13 @@ def main():
     index = faiss.IndexFlatIP(dim)
     index.add(emb)
 
-    faiss.write_index(index, 'artifacts/faiss_index')
-    with open('artifacts/chunks.json', 'w') as f:
+    faiss.write_index(index, os.path.join(args.artifacts_path, 'faiss_index'))
+    with open(os.path.join(args.artifacts_path, 'chunks.json'), 'w', encoding='utf-8') as f:
         json.dump(metadata, f, ensure_ascii=False, indent=4)
 
-    print(f'Saved FAISS index and metadata to artifacts/')
+    print(f'Saved FAISS index and metadata to {args.artifacts_path}')
 
 if __name__ == '__main__':
+    # docs = load_docs('data/pokerogue_pages')
+    # print(len(docs))
     main()
