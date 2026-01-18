@@ -17,11 +17,11 @@ def load_model(model_name: str = "Qwen/Qwen2.5-1.5B-Instruct"):
 
 
 def build_maxlen_prompt(system_prompt, context, query, tokenizer, max_length=1024):
-    prefix = f'{system_prompt}\n\n'
-    suffix = f'\n\nQuery: {query}'
+    prefix = f'SYSTEM: {system_prompt}\n\n\nCONTEXT:\n'
+    suffix = f'\n\n\nUSER QUERY: {query}\n\n\nASSISTANT ANSWER:\n'
 
-    prefix_ids = tokenizer(prefix, return_tensors='pt')['input_ids']
-    suffix_ids = tokenizer(suffix, return_tensors='pt')['input_ids']
+    prefix_ids = tokenizer(prefix)['input_ids']
+    suffix_ids = tokenizer(suffix)['input_ids']
 
     fixed_len = len(prefix_ids) + len(suffix_ids)
 
@@ -29,43 +29,47 @@ def build_maxlen_prompt(system_prompt, context, query, tokenizer, max_length=102
         raise Exception('system prompt + user query too long, max tokens has been reached before a query could be added.')
 
     chunks_to_keep = []
+    used = 0
     for chunk in context:
-        chunk_ids = tokenizer(chunk['source'], return_tensors='pt')['input_ids']
-        combined_len = len(chunk_ids) + fixed_len
+        chunk_ids = tokenizer(chunk['source'])['input_ids']
+        combined_len = len(chunk_ids) + fixed_len + used
 
-        if combined_len < max_length:
+        if combined_len <= max_length:
             chunks_to_keep.append(chunk['source'])
+            used += len(chunk_ids)
 
         else:
-            remainder = combined_len - max_length
+            remainder = max_length - (fixed_len + used)
             if remainder > 0:
                  chunk_ids = chunk_ids[:remainder]
-                 chunk_remainder = tokenizer.decode(chunk_ids, skip_special_token=True)
+                 chunk_remainder = tokenizer.decode(chunk_ids, skip_special_tokens=True)
                  chunks_to_keep.append(chunk_remainder)
             break
     context = f'\n\n'.join(chunks_to_keep)
     full_prompt = f'{prefix}{context}{suffix}'
     return full_prompt
 
-
-if __name__ == '__main__':
+def main():
     torch.cuda.empty_cache()
 
     parser = argparse.ArgumentParser(description='Chat with a rag model yay')
 
     parser.add_argument(
         '--model_name',
-        type=str, default='Qwen/Qwen2.5-1.5B-Instruct',
+        type=str, 
+        default='Qwen/Qwen2.5-1.5B-Instruct',
         help='Name of the model to load'
     )
 
     parser.add_argument(
         '--encoding_model',
+        type=str,
         default='all-MiniLM-L6-v2'
     )
 
     parser.add_argument(
         '--artifacts_path',
+        type=str,
         default='artifacts'
     )
 
@@ -76,11 +80,13 @@ if __name__ == '__main__':
 
     parser.add_argument(
           '--device',
+          type=str,
           default='cuda'
     )
 
     parser.add_argument(
          '--max_len',
+         type=int,
          default=1024
     )
 
@@ -90,7 +96,7 @@ if __name__ == '__main__':
                 raise Exception('Cuda is not available but is selected as the device, either select a different device or fix cuda availability issue.')
 
     SYSTEM_PROMPT = (
-        'You are a helpful assistant. Answer only using the provided context, if insufficient, say "I don\'t know". Make sure to respond to the users query, only using the context as needed based on the query.'
+        'You are a helpful assistant. Answer only using the provided context, if insufficient, say "I don\'t know". Make sure to respond to the users query, only using the context as needed based on the query. The context may be empty.'
     )
 
     embedding_model = SentenceTransformer(args.encoding_model, device='cpu')
@@ -98,7 +104,6 @@ if __name__ == '__main__':
 
     model, tokenizer = load_model(model_name=args.model_name)
     model.eval()
-    # print(f'Loaded model')
 
     print(f'Hi there, this is a chat model for some random stuff rn based on some rag thingy, if you have any questions that the database can answer, feel free to ask!')
 
@@ -108,24 +113,28 @@ if __name__ == '__main__':
             prompt = input('Enter your prompt: ')
 
         query_embedding = create_query_embedding(embedding_model, prompt)
-        relevant_chunks = retrieve_relevant_chunks(index, query_embedding, chunks, top_k=1)
+        relevant_chunks = retrieve_relevant_chunks(index, query_embedding, chunks, top_k=3)
 
         FULL_PROMPT = build_maxlen_prompt(SYSTEM_PROMPT, relevant_chunks, prompt, tokenizer=tokenizer, max_length=args.max_len)
 
         print('\n\n\nLOADING...\n\n\n')
 
         inputs = tokenizer([FULL_PROMPT], return_tensors='pt', truncation=True, max_length=args.max_len).to(args.device)
-        # print(f'decoded inputs: {tokenizer.decode(inputs['input_ids'][0])}')
+
         with torch.no_grad():
-            gen_ids = model.generate(**inputs, max_new_tokens=512)
-            # print(f'generated')
+            gen_ids = model.generate(**inputs, max_new_tokens=512, temperature)
 
         output_ids = gen_ids[:, inputs.input_ids.shape[-1]:]
 
         response = tokenizer.decode(output_ids[0], skip_special_tokens=True)
-        print(f'Bot: {response}')
+        print(f'Response: {response}')
 
         if args.testing:
-            print(f'\n\n\nFull prompt used:\n\n\n{FULL_PROMPT}')
+            print(f'\n\n\nFull prompt used:\n\n\n{FULL_PROMPT}\n\n\nResponse: {response}')
 
-        prompt = input('Enter your prompt: ')
+        prompt = input('\n\n\nEnter your prompt: ')
+     
+
+if __name__ == '__main__':
+    main()
+    

@@ -12,12 +12,17 @@ def load_artifacts(artifact_path):
 
     return index, chunks
 
+
 def create_query_embedding(model, query):
     return model.encode([query])
 
-def retrieve_relevant_chunks(index, query_embedding, chunks, top_k=5):
-    d, i = index.search(query_embedding, top_k)
-    return [chunks[j] for j in i[0]]
+
+def retrieve_relevant_chunks(index, query_embedding, chunks, top_k=5, threshold=.25):
+    scores, ids = index.search(query_embedding, top_k)
+    if scores[0][0] < threshold:
+        return []
+    return [chunks[j] for j in ids[0]]
+
 
 def construct_prompt(system_prompt, context_chunks, user_query):
     context_text = "\n".join([chunk['source'] for chunk in context_chunks])
