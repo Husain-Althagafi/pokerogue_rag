@@ -14,9 +14,41 @@ def load_model(model_name: str = "Qwen/Qwen2.5-1.5B-Instruct"):
         dtype=torch.float16,
     )
     return model, tokenizer
-    
-if __name__ == '__main__':
 
+
+def build_maxlen_prompt(system_prompt, context, query, tokenizer, max_length=1024):
+    prefix = f'{system_prompt}\n\n'
+    suffix = f'\n\nQuery: {query}'
+
+    prefix_ids = tokenizer(prefix, return_tensors='pt')['input_ids']
+    suffix_ids = tokenizer(suffix, return_tensors='pt')['input_ids']
+
+    fixed_len = len(prefix_ids) + len(suffix_ids)
+
+    if fixed_len >= max_length:
+        raise Exception('system prompt + user query too long, max tokens has been reached before a query could be added.')
+
+    chunks_to_keep = []
+    for chunk in context:
+        chunk_ids = tokenizer(chunk['source'], return_tensors='pt')['input_ids']
+        combined_len = len(chunk_ids) + fixed_len
+
+        if combined_len < max_length:
+            chunks_to_keep.append(chunk['source'])
+
+        else:
+            remainder = combined_len - max_length
+            if remainder > 0:
+                 chunk_ids = chunk_ids[:remainder]
+                 chunk_remainder = tokenizer.decode(chunk_ids, skip_special_token=True)
+                 chunks_to_keep.append(chunk_remainder)
+            break
+    context = f'\n\n'.join(chunks_to_keep)
+    full_prompt = f'{prefix}{context}{suffix}'
+    return full_prompt
+
+
+if __name__ == '__main__':
     torch.cuda.empty_cache()
 
     parser = argparse.ArgumentParser(description='Chat with a rag model yay')
@@ -25,7 +57,7 @@ if __name__ == '__main__':
         '--model_name',
         type=str, default='Qwen/Qwen2.5-1.5B-Instruct',
         help='Name of the model to load'
-        )
+    )
 
     parser.add_argument(
         '--encoding_model',
@@ -47,14 +79,18 @@ if __name__ == '__main__':
           default='cuda'
     )
 
+    parser.add_argument(
+         '--max_len',
+         default=1024
+    )
+
     args = parser.parse_args()
 
     if args.device == 'cuda' and not torch.cuda.is_available():
                 raise Exception('Cuda is not available but is selected as the device, either select a different device or fix cuda availability issue.')
 
     SYSTEM_PROMPT = (
-        'You are a helpful assistant. \n'
-        'Answer only using the provided context, if insufficient, say "I don\'t know".\n'
+        'You are a helpful assistant. Answer only using the provided context, if insufficient, say "I don\'t know". Make sure to respond to the users query, only using the context as needed based on the query.'
     )
 
     embedding_model = SentenceTransformer(args.encoding_model, device='cpu')
@@ -62,7 +98,7 @@ if __name__ == '__main__':
 
     model, tokenizer = load_model(model_name=args.model_name)
     model.eval()
-    print(f'Loaded model')
+    # print(f'Loaded model')
 
     print(f'Hi there, this is a chat model for some random stuff rn based on some rag thingy, if you have any questions that the database can answer, feel free to ask!')
 
@@ -74,19 +110,15 @@ if __name__ == '__main__':
         query_embedding = create_query_embedding(embedding_model, prompt)
         relevant_chunks = retrieve_relevant_chunks(index, query_embedding, chunks, top_k=1)
 
-        FULL_PROMPT = construct_prompt(SYSTEM_PROMPT, relevant_chunks, prompt)
+        FULL_PROMPT = build_maxlen_prompt(SYSTEM_PROMPT, relevant_chunks, prompt, tokenizer=tokenizer, max_length=args.max_len)
 
-        print('LOADING...')
+        print('\n\n\nLOADING...\n\n\n')
 
-        # print(f'len full prompt: {len(FULL_PROMPT)}')
-        # print(f'num of relevant chunks: {len(relevant_chunks)}')
-        # print(f'length of first chuck: {len(relevant_chunks[0]['source'])}')
-
-        inputs = tokenizer([FULL_PROMPT], return_tensors='pt', truncation=True, max_length=1024).to(args.device)
-        print(f'decoded inputs: {tokenizer.decode(inputs['input_ids'][0])}')
+        inputs = tokenizer([FULL_PROMPT], return_tensors='pt', truncation=True, max_length=args.max_len).to(args.device)
+        # print(f'decoded inputs: {tokenizer.decode(inputs['input_ids'][0])}')
         with torch.no_grad():
-            gen_ids = model.generate(**inputs, max_new_tokens=256)
-            print(f'generated')
+            gen_ids = model.generate(**inputs, max_new_tokens=512)
+            # print(f'generated')
 
         output_ids = gen_ids[:, inputs.input_ids.shape[-1]:]
 
@@ -94,8 +126,6 @@ if __name__ == '__main__':
         print(f'Bot: {response}')
 
         if args.testing:
-            print(f'Context used: {relevant_chunks[0]["source"][:20]}')
+            print(f'\n\n\nFull prompt used:\n\n\n{FULL_PROMPT}')
 
         prompt = input('Enter your prompt: ')
-        
-
