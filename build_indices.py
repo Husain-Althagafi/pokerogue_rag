@@ -6,6 +6,8 @@ from tqdm import tqdm
 import numpy as np
 import json
 import argparse
+from bs4 import BeautifulSoup
+import trafilatura
 
 def chunker(text: str, chunk_size: int = 350, overlap: int = 50):
     words = text.split()
@@ -19,10 +21,15 @@ def chunker(text: str, chunk_size: int = 350, overlap: int = 50):
 
 def load_docs(root_path: str):
     docs = []
-    for path in Path(root_path).rglob('*.txt'):
-        with open(path, 'r', encoding='utf-8') as file:
-            content = file.read()
-            docs.append(content)
+    for path in Path(root_path).rglob('*'):
+        if path.suffix in ['.txt', '.html']:
+            with open(path, 'r', encoding='utf-8') as file:
+                content = file.read()
+                if path.suffix.lower() == '.html':
+                    content = trafilatura.extract(content, output_format='markdown')
+
+                if content:
+                    docs.append((content, str(path)))
     return docs
 
 def main():
@@ -55,14 +62,22 @@ def main():
     metadata = []
 
     for i, doc in enumerate(docs):
-        chunks = chunker(doc)
+        chunk_idx = 0
+        chunks = chunker(doc[0])
         all_chunks.extend(chunks)
-        metadata.extend([{'source': doc, 'index': i}] * len(chunks))
+
+        for chunk in chunks:
+            metadata.append({
+                'source': doc[1],
+                'doc_idx': i,
+                'chunk_idx': chunk_idx
+            })
+            chunk_idx +=1
     
     print(f'Total chunks created: {len(all_chunks)}')
 
     emb = model.encode(all_chunks, batch_size=32, show_progress_bar=True, normalize_embeddings=True, convert_to_numpy=True)
-
+    print(emb.shape)
     dim = emb.shape[1]
     print(f'Embedding shape: {emb.shape}')
 
@@ -70,12 +85,17 @@ def main():
     index.add(emb)
 
     faiss.write_index(index, os.path.join(args.artifacts_path, 'faiss_index'))
+
+    outputs = {
+        'chunks': all_chunks,
+        'metadata': metadata,
+        'embedding_model': args.embedding_model
+    }
+
     with open(os.path.join(args.artifacts_path, 'chunks.json'), 'w', encoding='utf-8') as f:
-        json.dump(metadata, f, ensure_ascii=False, indent=4)
+        json.dump(outputs, f, ensure_ascii=False, indent=4)
 
     print(f'Saved FAISS index and metadata to {args.artifacts_path}')
 
 if __name__ == '__main__':
-    # docs = load_docs('data/pokerogue_pages')
-    # print(len(docs))
     main()

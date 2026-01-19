@@ -6,11 +6,11 @@ import os
 def load_artifacts(artifact_path):
     """Load artifacts from the specified path."""
     index = faiss.read_index(f"{artifact_path}/faiss_index")
-    with open(f"{artifact_path}/chunks.json", "r") as f:
-        chunks = json.load(f)
-
-
-    return index, chunks
+    with open(f"{artifact_path}/chunks.json", "r", encoding='utf-8') as f:
+        all_chunk_data = json.load(f)
+        chunks = all_chunk_data['chunks']
+        metadata = all_chunk_data['metadata']
+    return index, chunks, metadata
 
 
 def create_query_embedding(model, query):

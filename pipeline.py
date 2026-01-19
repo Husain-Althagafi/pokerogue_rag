@@ -31,11 +31,11 @@ def build_maxlen_prompt(system_prompt, context, query, tokenizer, max_length=102
     chunks_to_keep = []
     used = 0
     for chunk in context:
-        chunk_ids = tokenizer(chunk['source'])['input_ids']
+        chunk_ids = tokenizer(chunk)['input_ids']
         combined_len = len(chunk_ids) + fixed_len + used
 
         if combined_len <= max_length:
-            chunks_to_keep.append(chunk['source'])
+            chunks_to_keep.append(chunk)
             used += len(chunk_ids)
 
         else:
@@ -103,7 +103,7 @@ def main():
     )
 
     embedding_model = SentenceTransformer(args.encoding_model, device='cpu')
-    index, chunks = load_artifacts(os.path.join(args.artifacts_path))
+    index, chunks, metadata = load_artifacts(os.path.join(args.artifacts_path))
 
     model, tokenizer = load_model(model_name=args.model_name)
     model.eval()
