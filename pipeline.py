@@ -116,7 +116,7 @@ def main():
             prompt = input('Enter your prompt: ')
 
         query_embedding = create_query_embedding(embedding_model, prompt)
-        relevant_chunks = retrieve_relevant_chunks(index, query_embedding, chunks, top_k=3)
+        relevant_chunks, metadata_indices = retrieve_relevant_chunks(index, query_embedding, chunks, top_k=5)
 
         # FULL_PROMPT = build_maxlen_prompt(SYSTEM_PROMPT, relevant_chunks, prompt, tokenizer=tokenizer, max_length=args.max_len)
         system_prompt, context, query = build_maxlen_prompt(SYSTEM_PROMPT, relevant_chunks, prompt, tokenizer=tokenizer, max_length=args.max_len)
@@ -148,6 +148,10 @@ def main():
 
         if args.testing:
             print(f'\n\n\nFull prompt used:\n\n\n{messages}\n\n\nResponse: {response}')
+            selected_metadata = []
+            for m in metadata_indices:
+                selected_metadata.append(metadata[m])
+            print(f'\n\nChunk Metadata: {selected_metadata}')
 
         prompt = input('\n\n\nEnter your prompt: ')
      

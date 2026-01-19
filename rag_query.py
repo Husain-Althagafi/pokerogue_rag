@@ -20,8 +20,8 @@ def create_query_embedding(model, query):
 def retrieve_relevant_chunks(index, query_embedding, chunks, top_k=5, threshold=.25):
     scores, ids = index.search(query_embedding, top_k)
     if scores[0][0] < threshold:
-        return []
-    return [chunks[j] for j in ids[0]]
+        return [], []
+    return [chunks[j] for j in ids[0]], ids[0]
 
 
 def construct_prompt(system_prompt, context_chunks, user_query):
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     user_query = "What is the companies refund policy?"
 
     # Load artifacts
-    index, chunks = load_artifacts(os.path.join(artifact_path))
+    index, chunks, metadata = load_artifacts(os.path.join(artifact_path))
 
     # Load embedding model
     model = SentenceTransformer('all-MiniLM-L6-v2')
