@@ -46,8 +46,11 @@ def build_maxlen_prompt(system_prompt, context, query, tokenizer, max_length=102
                  chunks_to_keep.append(chunk_remainder)
             break
     context = f'\n\n'.join(chunks_to_keep)
-    full_prompt = f'{prefix}{context}{suffix}'
-    return full_prompt
+    return system_prompt, context, query
+
+    # full_prompt = f'{prefix}{context}{suffix}'
+    # return full_prompt
+
 
 def main():
     torch.cuda.empty_cache()
@@ -96,7 +99,7 @@ def main():
                 raise Exception('Cuda is not available but is selected as the device, either select a different device or fix cuda availability issue.')
 
     SYSTEM_PROMPT = (
-        'You are a helpful assistant. Answer only using the provided context, if insufficient, say "I don\'t know". Make sure to respond to the users query, only using the context as needed based on the query. The context may be empty.'
+        'You are a helpful assistant. Answer only using the provided context, if insufficient, say "I don\'t know". If the query is something that can be responded to without requiring information from the context, then go ahead and answer it as you see fit.'
     )
 
     embedding_model = SentenceTransformer(args.encoding_model, device='cpu')
@@ -115,14 +118,28 @@ def main():
         query_embedding = create_query_embedding(embedding_model, prompt)
         relevant_chunks = retrieve_relevant_chunks(index, query_embedding, chunks, top_k=3)
 
-        FULL_PROMPT = build_maxlen_prompt(SYSTEM_PROMPT, relevant_chunks, prompt, tokenizer=tokenizer, max_length=args.max_len)
+        # FULL_PROMPT = build_maxlen_prompt(SYSTEM_PROMPT, relevant_chunks, prompt, tokenizer=tokenizer, max_length=args.max_len)
+        system_prompt, context, query = build_maxlen_prompt(SYSTEM_PROMPT, relevant_chunks, prompt, tokenizer=tokenizer, max_length=args.max_len)
+        messages = [      
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f'CONTEXT:\n{context}\n\nQUESTION:\n{query}\n\nANSWER:\n'}
+        ]
 
         print('\n\n\nLOADING...\n\n\n')
 
-        inputs = tokenizer([FULL_PROMPT], return_tensors='pt', truncation=True, max_length=args.max_len).to(args.device)
+        inputs = tokenizer.apply_chat_template(
+             messages,
+             tokenize=False,
+             add_generation_prompt=True
+        )
+
+        inputs = tokenizer(
+             inputs,
+             return_tensors='pt'
+        ).to(args.device)
 
         with torch.no_grad():
-            gen_ids = model.generate(**inputs, max_new_tokens=512, temperature)
+            gen_ids = model.generate(**inputs, max_new_tokens=512, temperature=0.1)
 
         output_ids = gen_ids[:, inputs.input_ids.shape[-1]:]
 
@@ -130,7 +147,7 @@ def main():
         print(f'Response: {response}')
 
         if args.testing:
-            print(f'\n\n\nFull prompt used:\n\n\n{FULL_PROMPT}\n\n\nResponse: {response}')
+            print(f'\n\n\nFull prompt used:\n\n\n{messages}\n\n\nResponse: {response}')
 
         prompt = input('\n\n\nEnter your prompt: ')
      
