@@ -28,7 +28,7 @@ soupsieve==2.8.1
 sympy==1.13.1
 threadpoolctl==3.6.0
 tokenizers==0.22.2
-torch==2.5.1+cu121
+# torch==2.5.1+cu121
 tqdm==4.67.1
 transformers==4.57.3
 typing-extensions==4.15.0
