@@ -32,7 +32,7 @@ def load_docs(root_path: str):
                     docs.append((content, str(path)))
     return docs
 
-def main():
+def parse_args():
     parser = argparse.ArgumentParser(
         description='Script for building indices from data for rag',
     )
@@ -52,7 +52,11 @@ def main():
         default='all-MiniLM-L6-v2'
     )
 
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
 
     os.makedirs(args.artifacts_path, exist_ok=True)
     model = SentenceTransformer(args.embedding_model)
