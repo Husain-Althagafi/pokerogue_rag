@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification
 import argparse
 from rag_query import construct_prompt, load_artifacts, create_query_embedding, retrieve_relevant_chunks
 import faiss
@@ -47,7 +47,33 @@ def parse_args():
          default=1024
     )
 
+    parser.add_arguement(
+         '--reranker',
+         type=str,
+         default='BAAI/bge-reranker-v2-m3'
+    )
+
+    parser.add_arguement(
+         '--do_reranking',
+         action='store_true'
+    )
+
     return parser.parse_args()
+
+def reranking_model(model_name='BAAI/bge-reranker-v2-m3'):
+     return AutoModelForSequenceClassification.from_pretrained(model_name=model_name).eval(), AutoTokenizer.from_pretrained(model_name=model_name)
+
+
+def reranking(query, chunks, model_name, top_ranks=5):
+    reranker, tokenizer = reranking_model(model_name=model_name)
+
+    pairs = [[query, chunk] for chunk in chunks]
+
+    input_tokens = tokenizer(pairs, padding=True, truncation=True, return_tensors='pt', max_length=512)
+    reranking_scores = reranker(**input_tokens, return_dict=True).logits.view(-1).float()
+    reranked = sorted(zip(chunks, reranking_scores.tolist()), key = lambda x: x[1], reverse = True)
+     
+    return reranked[:top_ranks]
      
 
 def main():
@@ -74,10 +100,17 @@ def main():
             if not prompt:
                 prompt = input('Enter your prompt: ')
 
+            # embed query and dense retreival
             query_embedding = create_query_embedding(embedding_model, prompt)
-            relevant_chunks, metadata_indices = retrieve_relevant_chunks(index, query_embedding, chunks, top_k=5)
+            relevant_chunks, metadata_indices = retrieve_relevant_chunks(index, query_embedding, chunks, top_k=20)
 
-            # FULL_PROMPT = build_maxlen_prompt(SYSTEM_PROMPT, relevant_chunks, prompt, tokenizer=tokenizer, max_length=args.max_len)
+            # reranking
+            if args.do_reranking:
+                if args.testing:
+                     print(f'reranking')
+
+                relevant_chunks = reranking(query, relevant_chunks, top_ranks=5, model_name=args.reranker)
+
             system_prompt, context, query = build_maxlen_prompt(SYSTEM_PROMPT, relevant_chunks, prompt, tokenizer=tokenizer, max_length=args.max_len)
             messages = [      
                 {"role": "system", "content": system_prompt},

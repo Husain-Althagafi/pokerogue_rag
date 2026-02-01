@@ -1,0 +1,11 @@
+add reranking
+change main embedding model
+improve chunking strategy
+at some point when i am satisfied with the rag pipeline i can start adding tool use with langchain (idk if i can run locally tho
+
+start with add reranking ig
+
+
+think im done with a baseline reranker
+
+
