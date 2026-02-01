@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification
 import torch
 
 def load_model(model_name: str = "Qwen/Qwen2.5-1.5B-Instruct"):
@@ -10,6 +10,9 @@ def load_model(model_name: str = "Qwen/Qwen2.5-1.5B-Instruct"):
     )
     return model, tokenizer
 
+
+def load_reranking_model(model_name='BAAI/bge-reranker-v2-m3'):
+     return AutoModelForSequenceClassification.from_pretrained(model_name=model_name).eval(), AutoTokenizer.from_pretrained(model_name=model_name)
 
 if __name__ == '__main__':
     print(f'bro ran the model.py file')

@@ -4,8 +4,10 @@ improve chunking strategy
 at some point when i am satisfied with the rag pipeline i can start adding tool use with langchain (idk if i can run locally tho
 
 start with add reranking ig
-
-
 think im done with a baseline reranker
+
+wanna implement better chunking strategies
+my idea is to do it based on headings within the markdown so that i can differentiate each topic into subtopics so that a whole relevant idea will be represented in each chunk
+
 
 

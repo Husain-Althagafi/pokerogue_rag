@@ -5,7 +5,7 @@ import faiss
 from sentence_transformers import SentenceTransformer 
 import os
 import torch
-from model import load_model
+from model import load_model, load_reranking_model
 from utils import build_maxlen_prompt
 
 def parse_args():
@@ -60,19 +60,27 @@ def parse_args():
 
     return parser.parse_args()
 
-def reranking_model(model_name='BAAI/bge-reranker-v2-m3'):
-     return AutoModelForSequenceClassification.from_pretrained(model_name=model_name).eval(), AutoTokenizer.from_pretrained(model_name=model_name)
 
-
-def reranking(query, chunks, model_name, top_ranks=5):
-    reranker, tokenizer = reranking_model(model_name=model_name)
+def reranking(query, chunks, model_name, top_ranks=7, batch_size=4):
+    reranker, tokenizer = load_reranking_model(model_name=model_name)
+    reranker.eval()
 
     pairs = [[query, chunk] for chunk in chunks]
 
-    input_tokens = tokenizer(pairs, padding=True, truncation=True, return_tensors='pt', max_length=512)
-    reranking_scores = reranker(**input_tokens, return_dict=True).logits.view(-1).float()
-    reranked = sorted(zip(chunks, reranking_scores.tolist()), key = lambda x: x[1], reverse = True)
-     
+    reranking_scores = []
+
+    for i in range(0, len(pairs), batch_size):
+        batch_pairs = pairs[i:batch_size + i]
+
+        input_tokens = tokenizer(batch_pairs, padding=True, truncation=True, return_tensors='pt', max_length=512)
+        reranking_scores.append(reranker(**input_tokens, return_dict=True).logits.view(-1).float())
+
+    reranking_scores = torch.cat(reranking_scores, dim=0).tolist()
+    reranked = sorted(
+         reranking_scores,
+         key=lambda x: x[1],
+         reverse=True
+    )
     return reranked[:top_ranks]
      
 
@@ -109,7 +117,7 @@ def main():
                 if args.testing:
                      print(f'reranking')
 
-                relevant_chunks = reranking(query, relevant_chunks, top_ranks=5, model_name=args.reranker)
+                relevant_chunks = reranking(query, relevant_chunks, top_ranks=7, model_name=args.reranker)
 
             system_prompt, context, query = build_maxlen_prompt(SYSTEM_PROMPT, relevant_chunks, prompt, tokenizer=tokenizer, max_length=args.max_len)
             messages = [      
@@ -150,4 +158,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
