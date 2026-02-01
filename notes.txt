@@ -1,0 +1,36 @@
+pages i want
+
+
+pokemon page
+moves page
+item page
+map page
+evil teams page
+
+TODO
+
+need to make the chunking strategy better
+    - currently just chunking based on size and overlap rules, could do based on page/markdown headers instead. will look into ways for better chunking
+
+NEW IDEA
+
+* make the system agentic, so that the model is basically able to judge if it has enough in the context and if thinks that the context isnt sufficient for it to answer confidently to the query, then it can dynamically get itself more context
+
+
+
+
+add reranking
+change main embedding model
+improve chunking strategy
+at some point when i am satisfied with the rag pipeline i can start adding tool use with langchain (idk if i can run locally tho
+
+start with add reranking ig
+think im done with a baseline reranker
+
+got some more work
+
+wanna implement better chunking strategies
+my idea is to do it based on headings within the markdown so that i can differentiate each topic into subtopics so that a whole relevant idea will be represented in each chunk
+
+
+

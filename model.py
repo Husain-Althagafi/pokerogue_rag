@@ -12,7 +12,7 @@ def load_model(model_name: str = "Qwen/Qwen2.5-1.5B-Instruct"):
 
 
 def load_reranking_model(model_name='BAAI/bge-reranker-v2-m3'):
-     return AutoModelForSequenceClassification.from_pretrained(model_name=model_name).eval(), AutoTokenizer.from_pretrained(model_name=model_name)
+     return AutoModelForSequenceClassification.from_pretrained(model_name, device_map='auto', dtype=torch.float16).eval(), AutoTokenizer.from_pretrained(model_name)
 
 if __name__ == '__main__':
     print(f'bro ran the model.py file')

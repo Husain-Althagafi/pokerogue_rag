@@ -47,13 +47,13 @@ def parse_args():
          default=1024
     )
 
-    parser.add_arguement(
+    parser.add_argument(
          '--reranker',
          type=str,
          default='BAAI/bge-reranker-v2-m3'
     )
 
-    parser.add_arguement(
+    parser.add_argument(
          '--do_reranking',
          action='store_true'
     )
@@ -61,10 +61,8 @@ def parse_args():
     return parser.parse_args()
 
 
-def reranking(query, chunks, model_name, top_ranks=7, batch_size=4):
-    reranker, tokenizer = load_reranking_model(model_name=model_name)
+def reranking(query, reranker, tokenizer, chunks, top_ranks=7, batch_size=4, device='cuda'):
     reranker.eval()
-
     pairs = [[query, chunk] for chunk in chunks]
 
     reranking_scores = []
@@ -72,16 +70,18 @@ def reranking(query, chunks, model_name, top_ranks=7, batch_size=4):
     for i in range(0, len(pairs), batch_size):
         batch_pairs = pairs[i:batch_size + i]
 
-        input_tokens = tokenizer(batch_pairs, padding=True, truncation=True, return_tensors='pt', max_length=512)
+        input_tokens = tokenizer(batch_pairs, padding=True, truncation=True, return_tensors='pt', max_length=512).to(device)
         reranking_scores.append(reranker(**input_tokens, return_dict=True).logits.view(-1).float())
 
     reranking_scores = torch.cat(reranking_scores, dim=0).tolist()
     reranked = sorted(
-         reranking_scores,
+         zip(chunks, reranking_scores),
          key=lambda x: x[1],
          reverse=True
     )
-    return reranked[:top_ranks]
+
+    top_chunks = [chunk for chunk, _ in reranked[:top_ranks]]
+    return top_chunks
      
 
 def main():
@@ -102,6 +102,10 @@ def main():
     model, tokenizer = load_model(model_name=args.model_name)
     model.eval()
 
+    if args.do_reranking:
+        reranker, rerank_tokenizer = load_reranking_model(model_name=args.reranker)
+        reranker.to(args.device)
+
     with torch.inference_mode():
         prompt = None
         while not prompt or prompt.lower() != 'exit':
@@ -115,9 +119,8 @@ def main():
             # reranking
             if args.do_reranking:
                 if args.testing:
-                     print(f'reranking')
-
-                relevant_chunks = reranking(query, relevant_chunks, top_ranks=7, model_name=args.reranker)
+                     print(f'\nreranking\n')
+                relevant_chunks = reranking(prompt, reranker, rerank_tokenizer, relevant_chunks, top_ranks=7)
 
             system_prompt, context, query = build_maxlen_prompt(SYSTEM_PROMPT, relevant_chunks, prompt, tokenizer=tokenizer, max_length=args.max_len)
             messages = [      
